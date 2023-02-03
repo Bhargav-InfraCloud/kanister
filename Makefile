@@ -94,7 +94,7 @@ build: bin/$(ARCH)/$(BIN)
 build-controller:
 	@$(MAKE) run CMD='-c " \
 	goreleaser build --id $(BIN) --rm-dist --debug --snapshot \
-	&& cp dist/$(BIN)_linux_$(ARCH)/$(BIN) bin/$(ARCH)/$(BIN) \
+	&& find dist/$(BIN)_linux_$(ARCH)* -name '$(BIN)' | tail -n 1 | xargs -I{} cp -- "{}" bin/$(ARCH)/$(BIN) \
 	"'
 
 bin/$(ARCH)/$(BIN):
