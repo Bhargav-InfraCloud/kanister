@@ -95,7 +95,7 @@ func copyVolumeDataPodFunc(cli kubernetes.Interface, tp param.TemplateParams, na
 		}
 		defer CleanUpCredsFile(ctx, pw, pod.Namespace, pod.Name, pod.Spec.Containers[0].Name)
 		// Get restic repository
-		if err := restic.GetOrCreateRepository(cli, namespace, pod.Name, pod.Spec.Containers[0].Name, targetPath, encryptionKey, tp.Profile); err != nil {
+		if err := restic.GetOrCreateRepository(ctx, cli, namespace, pod.Name, pod.Spec.Containers[0].Name, targetPath, encryptionKey, tp.Profile); err != nil {
 			return nil, err
 		}
 		// Copy data to object store
@@ -104,7 +104,7 @@ func copyVolumeDataPodFunc(cli kubernetes.Interface, tp param.TemplateParams, na
 		if err != nil {
 			return nil, err
 		}
-		stdout, stderr, err := kube.Exec(cli, namespace, pod.Name, pod.Spec.Containers[0].Name, cmd, nil)
+		stdout, stderr, err := kube.Exec(ctx, cli, namespace, pod.Name, pod.Spec.Containers[0].Name, cmd, nil)
 		format.LogWithCtx(ctx, pod.Name, pod.Spec.Containers[0].Name, stdout)
 		format.LogWithCtx(ctx, pod.Name, pod.Spec.Containers[0].Name, stderr)
 		if err != nil {

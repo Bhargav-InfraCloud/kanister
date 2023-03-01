@@ -28,7 +28,7 @@ type PodCommandExecutor interface {
 
 // podCommandExecutorProcessor aids in unit testing
 type podCommandExecutorProcessor interface {
-	execWithOptions(cli kubernetes.Interface, opts ExecOptions) (string, string, error)
+	execWithOptions(ctx context.Context, cli kubernetes.Interface, opts ExecOptions) (string, string, error)
 }
 
 // podCommandExecutor keeps everything required to execute command within a pod
@@ -58,7 +58,7 @@ func (p *podCommandExecutor) Exec(ctx context.Context, command []string, stdin i
 	)
 
 	go func() {
-		_, _, err = p.pcep.execWithOptions(p.cli, opts)
+		_, _, err = p.pcep.execWithOptions(ctx, p.cli, opts)
 		close(cmdDone)
 	}()
 
@@ -71,6 +71,6 @@ func (p *podCommandExecutor) Exec(ctx context.Context, command []string, stdin i
 	return err
 }
 
-func (p *podCommandExecutor) execWithOptions(cli kubernetes.Interface, opts ExecOptions) (string, string, error) {
-	return ExecWithOptions(p.cli, opts)
+func (p *podCommandExecutor) execWithOptions(ctx context.Context, cli kubernetes.Interface, opts ExecOptions) (string, string, error) {
+	return ExecWithOptions(ctx, p.cli, opts)
 }
