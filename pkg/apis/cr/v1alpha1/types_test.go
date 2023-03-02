@@ -15,10 +15,10 @@
 package v1alpha1
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 
-	"github.com/pkg/errors"
 	. "gopkg.in/check.v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
@@ -73,7 +73,7 @@ func getBlueprintFromSpec(spec []byte) (*Blueprint, error) {
 	blueprint := &Blueprint{}
 	d := serializer.NewCodecFactory(runtime.NewScheme()).UniversalDeserializer()
 	if _, _, err := d.Decode([]byte(spec), nil, blueprint); err != nil {
-		return nil, errors.Wrap(err, "Failed to decode spec into object")
+		return nil, fmt.Errorf("failed to decode spec into object: %w", err)
 	}
 	return blueprint, nil
 }
