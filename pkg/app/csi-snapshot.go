@@ -16,8 +16,8 @@ package app
 
 import (
 	"context"
+	"fmt"
 
-	"github.com/pkg/errors"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -86,7 +86,7 @@ func (tlc *TimeLogCSI) Reset(ctx context.Context) error {
 	removeLogFileCmd := []string{"sh", "-c", "rm /var/log/time.log"}
 	stderr, err := tlc.execCommand(ctx, removeLogFileCmd)
 	if err != nil {
-		return errors.Wrapf(err, "Error while deleting log file: %s", stderr)
+		return fmt.Errorf("error while deleting log file: %s: %w", stderr, err)
 	}
 
 	log.Print("Reset of the application was successful.", field.M{"app": tlc.name})
@@ -133,7 +133,7 @@ func (tlc *TimeLogCSI) Ping(ctx context.Context) error {
 	listDirectories := []string{"sh", "-c", "ls /var/log"}
 	stderr, err := tlc.execCommand(ctx, listDirectories)
 	if err != nil {
-		return errors.Wrapf(err, "Error while Pinging the application %s", stderr)
+		return fmt.Errorf("error while Pinging the application %s: %w", stderr, err)
 	}
 
 	log.Print("Ping to the application was success.", field.M{"app": tlc.name})
@@ -167,7 +167,7 @@ func (tlc *TimeLogCSI) GetClusterScopedResources(ctx context.Context) []crv1alph
 func (tlc *TimeLogCSI) execCommand(ctx context.Context, command []string) (string, error) {
 	podname, containername, err := kube.GetPodContainerFromDeployment(ctx, tlc.cli, tlc.namespace, tlc.name)
 	if err != nil || podname == "" {
-		return "", errors.Wrapf(err, "Error getting pod and containername %s.", tlc.name)
+		return "", fmt.Errorf("error getting pod and containername %s: %w", tlc.name, err)
 	}
 	_, stderr, err := kube.Exec(tlc.cli, tlc.namespace, podname, containername, command, nil)
 	return stderr, err

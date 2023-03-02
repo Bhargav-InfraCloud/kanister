@@ -22,7 +22,6 @@ import (
 	"time"
 
 	osversioned "github.com/openshift/client-go/apps/clientset/versioned"
-	"github.com/pkg/errors"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -90,7 +89,7 @@ func (pgres *PostgreSQLDepConfig) Install(ctx context.Context, namespace string)
 
 	_, err := pgres.opeshiftClient.NewApp(ctx, pgres.namespace, dbTemplate, pgres.envVar, pgres.params)
 	if err != nil {
-		return errors.Wrapf(err, "Error installing application %s on openshift cluster", pgres.name)
+		return fmt.Errorf("error installing application %s on openshift cluster: %w", pgres.name, err)
 	}
 	// The secret that get created after installation doesnt have the creds that are mentioned in the
 	// POSTGRESQL_ADMIN_PASSWORD above, we are creating another secret that will have this detail
@@ -115,7 +114,7 @@ func (pgres *PostgreSQLDepConfig) createPostgreSQLSecret(ctx context.Context) er
 
 	_, err := pgres.cli.CoreV1().Secrets(pgres.namespace).Create(ctx, postgreSQLSecret, metav1.CreateOptions{})
 
-	return errors.Wrapf(err, "Error creating secret for mysqldepconf app.")
+	return fmt.Errorf("error creating secret for mysqldepconf app: %w", err)
 }
 
 func (pgres *PostgreSQLDepConfig) IsReady(ctx context.Context) (bool, error) {
@@ -125,7 +124,7 @@ func (pgres *PostgreSQLDepConfig) IsReady(ctx context.Context) (bool, error) {
 
 	err := kube.WaitOnDeploymentConfigReady(ctx, pgres.osCli, pgres.cli, pgres.namespace, postgresDepConfigName)
 	if err != nil {
-		return false, errors.Wrapf(err, "Error %s waiting for application to be ready.", pgres.name)
+		return false, fmt.Errorf("error %s waiting for application to be ready: %w", pgres.name, err)
 	}
 
 	log.Print("Application is ready", field.M{"app": pgres.name})
@@ -153,7 +152,7 @@ func (pgres *PostgreSQLDepConfig) Ping(ctx context.Context) error {
 	cmd := "pg_isready -U 'postgres' -h 127.0.0.1 -p 5432"
 	_, stderr, err := pgres.execCommand(ctx, []string{"bash", "-c", cmd})
 	if err != nil {
-		return errors.Wrapf(err, "Failed to ping postgresql deployment config DB. %s", stderr)
+		return fmt.Errorf("failed to ping postgresql deployment config DB: %s: %w", stderr, err)
 	}
 	log.Info().Print("Connected to database.", field.M{"app": pgres.name})
 	return nil
@@ -163,7 +162,7 @@ func (pgres *PostgreSQLDepConfig) Insert(ctx context.Context) error {
 	cmd := "psql -d test -c \"INSERT INTO COMPANY (NAME,AGE,CREATED_AT) VALUES ('foo', 32, now());\""
 	_, stderr, err := pgres.execCommand(ctx, []string{"bash", "-c", cmd})
 	if err != nil {
-		return errors.Wrapf(err, "Failed to create db in postgresql deployment config. %s", stderr)
+		return fmt.Errorf("failed to create db in postgresql deployment config: %s: %w", stderr, err)
 	}
 	log.Info().Print("Inserted a row in test db.", field.M{"app": pgres.name})
 	return nil
@@ -173,7 +172,7 @@ func (pgres *PostgreSQLDepConfig) Count(ctx context.Context) (int, error) {
 	cmd := "psql -d test -c 'SELECT COUNT(*) FROM company;'"
 	stdout, stderr, err := pgres.execCommand(ctx, []string{"bash", "-c", cmd})
 	if err != nil {
-		return 0, errors.Wrapf(err, "Failed to count db entries in postgresql deployment config. %s ", stderr)
+		return 0, fmt.Errorf("failed to count db entries in postgresql deployment config: %s: %w", stderr, err)
 	}
 
 	out := strings.Fields(stdout)
@@ -182,7 +181,7 @@ func (pgres *PostgreSQLDepConfig) Count(ctx context.Context) (int, error) {
 	}
 	count, err := strconv.Atoi(out[2])
 	if err != nil {
-		return 0, errors.Wrapf(err, "Failed to count db entries in postgresql deployment config. %s ", stderr)
+		return 0, fmt.Errorf("failed to count db entries in postgresql deployment config: %s: %w", stderr, err)
 	}
 	log.Info().Print("Counting rows in test db.", field.M{"app": pgres.name, "count": count})
 	return count, nil
@@ -192,7 +191,7 @@ func (pgres *PostgreSQLDepConfig) Reset(ctx context.Context) error {
 	cmd := "psql -c 'DROP DATABASE IF EXISTS test;'"
 	_, stderr, err := pgres.execCommand(ctx, []string{"bash", "-c", cmd})
 	if err != nil {
-		return errors.Wrapf(err, "Failed to drop db from postgresql deployment config. %s ", stderr)
+		return fmt.Errorf("failed to drop db from postgresql deployment config: %s: %w", stderr, err)
 	}
 
 	log.Info().Print("Database reset successful!", field.M{"app": pgres.name})
@@ -205,14 +204,14 @@ func (pgres *PostgreSQLDepConfig) Initialize(ctx context.Context) error {
 	cmd := "psql -c 'CREATE DATABASE test;'"
 	_, stderr, err := pgres.execCommand(ctx, []string{"bash", "-c", cmd})
 	if err != nil {
-		return errors.Wrapf(err, "Failed to create db in postgresql deployment config %s ", stderr)
+		return fmt.Errorf("failed to create db in postgresql deployment config %s: %w", stderr, err)
 	}
 
 	// Create table
 	cmd = "psql -d test -c 'CREATE TABLE COMPANY(ID SERIAL PRIMARY KEY NOT NULL, NAME TEXT NOT NULL, AGE INT NOT NULL, CREATED_AT TIMESTAMP);'"
 	_, stderr, err = pgres.execCommand(ctx, []string{"bash", "-c", cmd})
 	if err != nil {
-		return errors.Wrapf(err, "Failed to create table in postgresql deployment config %s ", stderr)
+		return fmt.Errorf("failed to create table in postgresql deployment config %s: %w", stderr, err)
 	}
 	return nil
 }

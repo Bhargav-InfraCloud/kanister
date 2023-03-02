@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
@@ -78,7 +77,7 @@ func (fdb *FoundationDB) Install(ctx context.Context, namespace string) error {
 
 	helmVersion, err := helm.FindVersion()
 	if err != nil {
-		return errors.Wrapf(err, "Couldn't find the helm version.")
+		return fmt.Errorf("couldn't find the helm version: %w", err)
 	}
 
 	var oprARG, instARG []string
@@ -93,12 +92,12 @@ func (fdb *FoundationDB) Install(ctx context.Context, namespace string) error {
 
 	out, err := helm.RunCmdWithTimeout(ctx, helm.GetHelmBinName(), oprARG)
 	if err != nil {
-		return errors.Wrapf(err, "Error installing the operator for %s, error is %s.", fdb.name, out)
+		return fmt.Errorf("error installing the operator for %s, error is %s: %w", fdb.name, out, err)
 	}
 
 	out, err = helm.RunCmdWithTimeout(ctx, helm.GetHelmBinName(), instARG)
 	if err != nil {
-		return errors.Wrapf(err, "Error installing the application %s, error is %s", fdb.name, out)
+		return fmt.Errorf("error installing the application %s, error is %s: %w", fdb.name, out, err)
 	}
 
 	log.Print("Application was installed successfully.", field.M{"app": fdb.name})
@@ -140,13 +139,13 @@ func (fdb *FoundationDB) Uninstall(ctx context.Context) error {
 	unintFDB := []string{"delete", "-n", fdb.namespace, fdb.fdbReleaseName}
 	out, err := helm.RunCmdWithTimeout(ctx, helm.GetHelmBinName(), unintFDB)
 	if err != nil {
-		return errors.Wrapf(err, "Error uninstalling the fdb instance. Error=%s", out)
+		return fmt.Errorf("error uninstalling the fdb instance. Error=%s, %w", out, err)
 	}
 
 	uninstOpr := []string{"delete", "-n", fdb.namespace, fdb.oprReleaseName}
 	out, err = helm.RunCmdWithTimeout(ctx, helm.GetHelmBinName(), uninstOpr)
 
-	return errors.Wrapf(err, "Error uninstalling the operator. Error=%s", out)
+	return fmt.Errorf("error uninstalling the operator. Error=%s: %w", out, err)
 }
 
 func (fdb *FoundationDB) GetClusterScopedResources(ctx context.Context) []crv1alpha1.ObjectReference {
@@ -163,10 +162,10 @@ func (fdb *FoundationDB) getRunningFDBPod() (string, error) {
 	}
 
 	if len(pod.Status.ContainerStatuses) == 0 {
-		return "", errors.New(fmt.Sprintf("Couldn't find ready pod. name=%s namespace=%s", fdb.name, fdb.namespace))
+		return "", fmt.Errorf("couldn't find ready pod. name=%s namespace=%s", fdb.name, fdb.namespace)
 	}
 	if !pod.Status.ContainerStatuses[0].Ready {
-		return "", errors.New(fmt.Sprintf("Couldn't find ready pod. name=%s namespace=%s", fdb.name, fdb.namespace))
+		return "", fmt.Errorf("couldn't find ready pod. name=%s namespace=%s", fdb.name, fdb.namespace)
 	}
 
 	return pod.GetName(), nil
@@ -179,7 +178,7 @@ func (fdb *FoundationDB) Ping(ctx context.Context) error {
 	pingCMD := []string{"sh", "-c", "fdbcli"}
 	stdout, stderr, err := fdb.execCommand(ctx, pingCMD)
 	if err != nil {
-		return errors.Wrapf(err, "Error while pinging the database. Application %s, Err %s", fdb.name, stderr)
+		return fmt.Errorf("error while pinging the database. Application %s, stderr %s: %w", fdb.name, stderr, err)
 	}
 
 	// This is how we get the output of fdbcli
@@ -188,7 +187,7 @@ func (fdb *FoundationDB) Ping(ctx context.Context) error {
 	// Welcome to the fdbcli. For help, type `help'.
 
 	if !strings.Contains(stdout, "The database is available") {
-		return errors.New(fmt.Sprintf("Database %s is still not ready.", fdb.name))
+		return fmt.Errorf("database %s is still not ready", fdb.name)
 	}
 
 	return nil
@@ -200,7 +199,7 @@ func (fdb *FoundationDB) Insert(ctx context.Context) error {
 	insertCMD := []string{"sh", "-c", fmt.Sprintf("fdbcli --exec 'writemode on; set %s vivek; '", uuid.New())}
 	_, stderr, err := fdb.execCommand(ctx, insertCMD)
 
-	return errors.Wrapf(err, "Error %s inserting data into the database.", stderr)
+	return fmt.Errorf("error %s inserting data into the database: %w", stderr, err)
 }
 
 // Count is used to count the number of records
@@ -208,7 +207,7 @@ func (fdb *FoundationDB) Count(ctx context.Context) (int, error) {
 	countCMD := []string{"sh", "-c", "fdbcli --exec \"getrangekeys '' \xFF \""}
 	stdout, stderr, err := fdb.execCommand(ctx, countCMD)
 	if err != nil {
-		return 0, errors.Wrapf(err, "Error %s counting the records in the %s database.", stderr, fdb.name)
+		return 0, fmt.Errorf("error %s counting the records in the %s database: %w", stderr, fdb.name, err)
 	}
 
 	// Below is how we get the output of getrangekeys
@@ -226,7 +225,7 @@ func (fdb *FoundationDB) Reset(ctx context.Context) error {
 	resetCMD := []string{"sh", "-c", "fdbcli --exec \"writemode on; clearrange '' \xFF\" "}
 	stdout, stderr, err := fdb.execCommand(ctx, resetCMD)
 
-	return errors.Wrapf(err, "Error %s resetting the database %s. stdout=%s", stderr, fdb.name, stdout)
+	return fmt.Errorf("error %s resetting the database %s. stdout=%s: %w", stderr, fdb.name, stdout, err)
 }
 
 // Initialize is used to initialize the database or create schema

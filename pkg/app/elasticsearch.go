@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/pkg/errors"
 	"k8s.io/client-go/kubernetes"
 
 	crv1alpha1 "github.com/kanisterio/kanister/pkg/apis/cr/v1alpha1"
@@ -90,7 +89,7 @@ func (esi *ElasticsearchInstance) Install(ctx context.Context, namespace string)
 	// Get the HELM cli
 	cli, err := helm.NewCliClient()
 	if err != nil {
-		return errors.Wrap(err, "failed to create helm client")
+		return fmt.Errorf("failed to create helm client: %w", err)
 	}
 
 	log.Print("Installing the application using helm.", field.M{"app": esi.name})
@@ -132,13 +131,13 @@ func (esi *ElasticsearchInstance) Object() crv1alpha1.ObjectReference {
 func (esi *ElasticsearchInstance) Uninstall(ctx context.Context) error {
 	cli, err := helm.NewCliClient()
 	if err != nil {
-		return errors.Wrap(err, "failed to create helm client")
+		return fmt.Errorf("failed to create helm client: %w", err)
 	}
 
 	log.Print("UnInstalling the application using helm.", field.M{"app": esi.name})
 	err = cli.Uninstall(ctx, esi.chart.Release, esi.namespace)
 	if err != nil {
-		return errors.Wrapf(err, "Error uninstalling the application %s", esi.name)
+		return fmt.Errorf("error uninstalling the application %s: %w", esi.name, err)
 	}
 
 	return nil
@@ -164,7 +163,7 @@ func (esi *ElasticsearchInstance) Ping(ctx context.Context) error {
 	pingCMD := []string{"sh", "-c", esi.curlCommand("GET", "")}
 	_, stderr, err := esi.execCommand(ctx, pingCMD)
 	if err != nil {
-		return errors.Wrapf(err, "Failed to ping the application. Error:%s", stderr)
+		return fmt.Errorf("failed to ping the application. Error: %s: %w", stderr, err)
 	}
 
 	log.Print("Ping to the application was successful.", field.M{"app": esi.name})
@@ -176,7 +175,7 @@ func (esi *ElasticsearchInstance) Insert(ctx context.Context) error {
 	if err != nil {
 		// even one insert failed we will have to return becasue
 		// the count wont  match anyway and the test will fail
-		return errors.Wrapf(err, "Error %s inserting document to an index %s.", stderr, esi.indexname)
+		return fmt.Errorf("error %s inserting document to an index %s: %w", stderr, esi.indexname, err)
 	}
 
 	log.Print("A document was inserted into the elastics search index.", field.M{"app": esi.name})
@@ -187,7 +186,7 @@ func (esi *ElasticsearchInstance) Count(ctx context.Context) (int, error) {
 	documentCountCMD := []string{"sh", "-c", esi.curlCommand("GET", esi.indexname+"/_search?pretty")}
 	stdout, stderr, err := esi.execCommand(ctx, documentCountCMD)
 	if err != nil {
-		return 0, errors.Wrapf(err, "Error %s Counting the documents in an index.", stderr)
+		return 0, fmt.Errorf("error %s Counting the documents in an index: %w", stderr, err)
 	}
 
 	// convert the output to ElasticsearchPingOutput object so that we can get the document count
@@ -208,7 +207,7 @@ func (esi *ElasticsearchInstance) Reset(ctx context.Context) error {
 	deleteIndexCMD := []string{"sh", "-c", esi.curlCommand("DELETE", esi.indexname+"/?pretty")}
 	_, stderr, err := esi.execCommand(ctx, deleteIndexCMD)
 	if err != nil {
-		return errors.Wrapf(err, "Error %s while deleting the index %s to reset the application.", stderr, esi.indexname)
+		return fmt.Errorf("error %s while deleting the index %s to reset the application: %w", stderr, esi.indexname, err)
 	}
 
 	return nil
@@ -220,7 +219,7 @@ func (esi *ElasticsearchInstance) Initialize(ctx context.Context) error {
 	createIndexCMD := []string{"sh", "-c", esi.curlCommand("PUT", esi.indexname+"/?pretty")}
 	_, stderr, err := esi.execCommand(ctx, createIndexCMD)
 	if err != nil {
-		return errors.Wrapf(err, "Error %s: Resetting the application.", stderr)
+		return fmt.Errorf("error %s: Resetting the application: %w", stderr, err)
 	}
 	return nil
 }
@@ -228,7 +227,7 @@ func (esi *ElasticsearchInstance) Initialize(ctx context.Context) error {
 func (esi *ElasticsearchInstance) execCommand(ctx context.Context, command []string) (string, string, error) {
 	podname, containername, err := kube.GetPodContainerFromStatefulSet(ctx, esi.cli, esi.namespace, fmt.Sprintf("%s-master", esi.name))
 	if err != nil || podname == "" {
-		return "", "", errors.Wrapf(err, "Error getting the pod and container name %s.", esi.name)
+		return "", "", fmt.Errorf("error getting the pod and container name %s: %w", esi.name, err)
 	}
 	return kube.Exec(esi.cli, esi.namespace, podname, containername, command, nil)
 }

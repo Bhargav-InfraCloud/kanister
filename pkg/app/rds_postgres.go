@@ -25,7 +25,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	awsrds "github.com/aws/aws-sdk-go/service/rds"
 	"github.com/ghodss/yaml"
-	"github.com/pkg/errors"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -123,7 +122,7 @@ func (pdb *RDSPostgresDB) Install(ctx context.Context, ns string) error {
 	// Create AWS config
 	awsConfig, region, err := pdb.getAWSConfig(ctx)
 	if err != nil {
-		return errors.Wrapf(err, "app=%s", pdb.name)
+		return fmt.Errorf("error app=%s: %w", pdb.name, err)
 	}
 	// Create ec2 client
 	ec2Cli, err := ec2.NewClient(ctx, awsConfig, region)
@@ -252,7 +251,7 @@ func (pdb *RDSPostgresDB) Ping(ctx context.Context) error {
 		return err
 	}
 	if databases == nil {
-		return errors.New("Databases are missing from configmap")
+		return fmt.Errorf("databases are missing from configmap")
 	}
 
 	var connectionString string = fmt.Sprintf("host=%s user=%s password=%s dbname=%s sslmode=disable", dbconfig.Data["postgres.host"], dbconfig.Data["postgres.user"], dbsecret.Data["password"], databases[0])
@@ -340,12 +339,12 @@ func (pdb RDSPostgresDB) Uninstall(ctx context.Context) error {
 	// Create AWS config
 	awsConfig, region, err := pdb.getAWSConfig(ctx)
 	if err != nil {
-		return errors.Wrapf(err, "app=%s", pdb.name)
+		return fmt.Errorf("error app=%s: %w", pdb.name, err)
 	}
 	// Create rds client
 	rdsCli, err := rds.NewClient(ctx, awsConfig, region)
 	if err != nil {
-		return errors.Wrap(err, "Failed to create rds client. You may need to delete RDS resources manually. app=rds-postgresql")
+		return fmt.Errorf("failed to create rds client. You may need to delete RDS resources manually. app=rds-postgresql: %w", err)
 	}
 
 	// Delete rds instance
@@ -357,7 +356,7 @@ func (pdb RDSPostgresDB) Uninstall(ctx context.Context) error {
 			case awsrds.ErrCodeDBInstanceNotFoundFault:
 				log.Info().Print("RDS instance already deleted: ErrCodeDBInstanceNotFoundFault.", field.M{"app": pdb.name, "id": pdb.id})
 			default:
-				return errors.Wrapf(err, "Failed to delete rds instance. You may need to delete it manually. app=rds-postgresql id=%s", pdb.id)
+				return fmt.Errorf("failed to delete rds instance. You may need to delete it manually. app=rds-postgresql id=%s: %w", pdb.id, err)
 			}
 		}
 	}
@@ -367,14 +366,14 @@ func (pdb RDSPostgresDB) Uninstall(ctx context.Context) error {
 		log.Info().Print("Waiting for rds to be deleted", field.M{"app": pdb.name})
 		err = rdsCli.WaitUntilDBInstanceDeleted(ctx, pdb.id)
 		if err != nil {
-			return errors.Wrapf(err, "Failed to wait for rds instance till delete succeeds. app=rds-postgresql id=%s", pdb.id)
+			return fmt.Errorf("failed to wait for rds instance till delete succeeds. app=rds-postgresql id=%s: %w", pdb.id, err)
 		}
 	}
 
 	// Create ec2 client
 	ec2Cli, err := ec2.NewClient(ctx, awsConfig, region)
 	if err != nil {
-		return errors.Wrap(err, "Failed to ec2 client. You may need to delete EC2 resources manually. app=rds-postgresql")
+		return fmt.Errorf("failed to ec2 client. You may need to delete EC2 resources manually. app=rds-postgresql: %w", err)
 	}
 
 	// Delete security group
@@ -386,7 +385,7 @@ func (pdb RDSPostgresDB) Uninstall(ctx context.Context) error {
 			case "InvalidGroup.NotFound":
 				log.Error().Print("Security group already deleted: InvalidGroup.NotFound.", field.M{"app": pdb.name, "name": pdb.securityGroupName})
 			default:
-				return errors.Wrapf(err, "Failed to delete security group. You may need to delete it manually. app=rds-postgresql name=%s", pdb.securityGroupName)
+				return fmt.Errorf("failed to delete security group. You may need to delete it manually. app=rds-postgresql name=%s: %w", pdb.securityGroupName, err)
 			}
 		}
 	}

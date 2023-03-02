@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
@@ -87,17 +86,17 @@ func (cb *CouchbaseDB) Install(ctx context.Context, ns string) error {
 	// Create helm client
 	cli, err := helm.NewCliClient()
 	if err != nil {
-		return errors.Wrap(err, "failed to create helm client")
+		return fmt.Errorf("failed to create helm client: %w", err)
 	}
 
 	// Add helm repo and fetch charts
 	if err = cli.AddRepo(ctx, cb.chart.RepoName, cb.chart.RepoURL); err != nil {
-		return errors.Wrapf(err, "Failed to install helm repo. app=%s repo=%s", cb.name, cb.chart.RepoName)
+		return fmt.Errorf("failed to install helm repo. app=%s repo=%s: %w", cb.name, cb.chart.RepoName, err)
 	}
 
 	// Install cb operator, admission controller and cluster
 	err = cli.Install(ctx, fmt.Sprintf("%s/%s", cb.chart.RepoName, cb.chart.Chart), cb.chart.Version, cb.chart.Release, cb.namespace, cb.chart.Values, true)
-	return errors.Wrapf(err, "Failed to install helm chart. app=%s chart=%s release=%s", cb.name, cb.chart.Chart, cb.chart.Release)
+	return fmt.Errorf("failed to install helm chart. app=%s chart=%s release=%s: %w", cb.name, cb.chart.Chart, cb.chart.Release, err)
 }
 
 func (cb *CouchbaseDB) IsReady(ctx context.Context) (bool, error) {
@@ -144,7 +143,7 @@ func (cb *CouchbaseDB) Ping(ctx context.Context) error {
 	cmd := fmt.Sprintf("cbc-ping -u %s -P %s -c %d", cb.username, cb.password, numPings)
 	_, stderr, err := cb.execCommand(ctx, []string{"sh", "-c", cmd})
 	if err != nil {
-		return errors.Wrapf(err, "Failed to ping couchbase DB. %s", stderr)
+		return fmt.Errorf("failed to ping couchbase DB: %s: %w", stderr, err)
 	}
 	log.Info().Print("Connected to database.", field.M{"app": cb.name})
 	return nil
@@ -160,7 +159,7 @@ func (cb CouchbaseDB) Insert(ctx context.Context) error {
 	cmd := fmt.Sprintf("cbc-create -u %s -P %s %s -V '{\"name\":\"test\", \"age\": 25}'", cb.username, cb.password, uuid.New().String())
 	_, stderr, err := cb.execCommand(ctx, []string{"sh", "-c", cmd})
 	if err != nil {
-		return errors.Wrapf(err, "Failed to add document in couchbase default bucket. %s", stderr)
+		return fmt.Errorf("failed to add document in couchbase default bucket: %s: %w", stderr, err)
 	}
 
 	// We'll wait till count correct result
@@ -177,7 +176,7 @@ func (cb CouchbaseDB) Count(ctx context.Context) (int, error) {
 	cmd := fmt.Sprintf("cbc-n1ql -u %s -P %s 'select count(*) from default'", cb.username, cb.password)
 	stdout, stderr, err := cb.execCommand(ctx, []string{"sh", "-c", cmd})
 	if err != nil {
-		return 0, errors.Wrapf(err, "Failed to count db entries in couchbase. %s ", stderr)
+		return 0, fmt.Errorf("failed to count db entries in couchbase: %s: %w", stderr, err)
 	}
 
 	// Parse output
@@ -201,7 +200,7 @@ func (cb CouchbaseDB) Count(ctx context.Context) (int, error) {
 
 	count, err := strconv.Atoi(matched[0][1])
 	if err != nil {
-		return 0, errors.Wrapf(err, "Failed to count db entries in couchbase. %s ", stderr)
+		return 0, fmt.Errorf("failed to count db entries in couchbase: %s: %w", stderr, err)
 	}
 	log.Info().Print("Counting rows in test db.", field.M{"app": cb.name, "count": count})
 	return count, nil
@@ -215,14 +214,14 @@ func (cb CouchbaseDB) Reset(ctx context.Context) error {
 	cmd := fmt.Sprintf("cbc-n1ql -u %s -P %s 'create primary index on default'", cb.username, cb.password)
 	_, stderr, err := cb.execCommand(ctx, []string{"sh", "-c", cmd})
 	if err != nil {
-		return errors.Wrapf(err, "Failed to create index on default. %s app=%s", stderr, cb.name)
+		return fmt.Errorf("failed to create index on default: %s app=%s: %w", stderr, cb.name, err)
 	}
 
 	// Delete all documents
 	cmd = fmt.Sprintf("cbc-n1ql -u %s -P %s 'delete from default'", cb.username, cb.password)
 	_, stderr, err = cb.execCommand(ctx, []string{"sh", "-c", cmd})
 	if err != nil {
-		return errors.Wrapf(err, "Failed to delete documents from default bucket. %s app=%s", stderr, cb.name)
+		return fmt.Errorf("failed to delete documents from default bucket: %s app=%s: %w", stderr, cb.name, err)
 	}
 
 	// We'll wait till count returns zero
@@ -238,13 +237,13 @@ func (cb CouchbaseDB) Uninstall(ctx context.Context) error {
 	// Create helm client
 	cli, err := helm.NewCliClient()
 	if err != nil {
-		return errors.Wrap(err, "failed to create helm client")
+		return fmt.Errorf("failed to create helm client: %w", err)
 	}
 
 	// Uninstall couchbase-operator helm chart
 	log.Info().Print("Uninstalling helm charts.", field.M{"app": cb.name, "release": cb.chart.Release, "namespace": cb.namespace})
 	err = cli.Uninstall(ctx, cb.chart.Release, cb.namespace)
-	return errors.Wrapf(err, "Failed to uninstall %s helm release", cb.chart.Release)
+	return fmt.Errorf("failed to uninstall %s helm release: %w", cb.chart.Release, err)
 }
 
 func (cb CouchbaseDB) GetClusterScopedResources(ctx context.Context) []crv1alpha1.ObjectReference {
@@ -274,10 +273,10 @@ func (cb CouchbaseDB) getRunningCBPod() (string, error) {
 	}
 
 	if len(pod.Status.ContainerStatuses) == 0 {
-		return "", errors.New(fmt.Sprintf("Could not find ready pod. name=%s namespace=%s", podName, cb.namespace))
+		return "", fmt.Errorf(fmt.Sprintf("Could not find ready pod. name=%s namespace=%s", podName, cb.namespace))
 	}
 	if !pod.Status.ContainerStatuses[0].Ready {
-		return "", errors.New(fmt.Sprintf("Could not find ready pod. name=%s namespace=%s", podName, cb.namespace))
+		return "", fmt.Errorf(fmt.Sprintf("Could not find ready pod. name=%s namespace=%s", podName, cb.namespace))
 	}
 
 	return pod.GetName(), nil
@@ -292,5 +291,5 @@ func (cb CouchbaseDB) waitForCount(ctx context.Context, result int) error {
 		count, err := cb.Count(ctx)
 		return count == result, err
 	})
-	return errors.Wrapf(err, "Timed out while waiting for Couchbase cluster to be in sync")
+	return fmt.Errorf("timed out while waiting for Couchbase cluster to be in sync: %w", err)
 }

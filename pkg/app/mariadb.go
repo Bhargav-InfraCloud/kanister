@@ -21,7 +21,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pkg/errors"
 	"k8s.io/client-go/kubernetes"
 
 	crv1alpha1 "github.com/kanisterio/kanister/pkg/apis/cr/v1alpha1"
@@ -78,18 +77,18 @@ func (m *MariaDB) Install(ctx context.Context, namespace string) error {
 	m.namespace = namespace
 	cli, err := helm.NewCliClient()
 	if err != nil {
-		return errors.Wrap(err, "failed to create helm client")
+		return fmt.Errorf("failed to create helm client: %w", err)
 	}
 	log.Print("Adding repo.", field.M{"app": m.name})
 	err = cli.AddRepo(ctx, m.chart.RepoName, m.chart.RepoURL)
 	if err != nil {
-		return errors.Wrapf(err, "Error adding helm repo for app %s.", m.name)
+		return fmt.Errorf("error adding helm repo for app %s: %w", m.name, err)
 	}
 
 	log.Print("Installing maria instance using helm.", field.M{"app": m.name})
 	err = cli.Install(ctx, m.chart.RepoName+"/"+m.chart.Chart, m.chart.Version, m.chart.Release, m.namespace, m.chart.Values, true)
 	if err != nil {
-		return errors.Wrapf(err, "Error intalling application %s through helm.", m.name)
+		return fmt.Errorf("error intalling application %s through helm: %w", m.name, err)
 	}
 
 	return nil
@@ -118,7 +117,7 @@ func (m *MariaDB) Object() crv1alpha1.ObjectReference {
 func (m *MariaDB) Uninstall(ctx context.Context) error {
 	cli, err := helm.NewCliClient()
 	if err != nil {
-		return errors.Wrap(err, "failed to create helm client")
+		return fmt.Errorf("failed to create helm client: %w", err)
 	}
 	err = cli.Uninstall(ctx, m.chart.Release, m.namespace)
 	if err != nil {
@@ -140,7 +139,7 @@ func (m *MariaDB) Ping(ctx context.Context) error {
 	loginMaria := []string{"sh", "-c", "mysql -u root --password=$MARIADB_ROOT_PASSWORD"}
 	_, stderr, err := m.execCommand(ctx, loginMaria)
 	if err != nil {
-		return errors.Wrapf(err, "Error while Pinging the database %s", stderr)
+		return fmt.Errorf("error while Pinging the database %s: %w", stderr, err)
 	}
 
 	log.Print("Ping to the application was success.", field.M{"app": m.name})
@@ -153,7 +152,7 @@ func (m *MariaDB) Insert(ctx context.Context) error {
 	insertRecordCMD := []string{"sh", "-c", "mysql -u root --password=$MARIADB_ROOT_PASSWORD -e 'use testdb; INSERT INTO pets VALUES (\"Puffball\",\"Diane\",\"hamster\",\"f\",\"1999-03-30\",NULL); '"}
 	_, stderr, err := m.execCommand(ctx, insertRecordCMD)
 	if err != nil {
-		return errors.Wrapf(err, "Error while inserting the data into msyql database: %s", stderr)
+		return fmt.Errorf("error while inserting the data into msyql database: %s: %w", stderr, err)
 	}
 
 	log.Print("Successfully inserted records in the application.", field.M{"app": m.name})
@@ -166,12 +165,12 @@ func (m *MariaDB) Count(ctx context.Context) (int, error) {
 	selectRowsCMD := []string{"sh", "-c", "mysql -u root --password=$MARIADB_ROOT_PASSWORD -e 'use testdb; select count(*) from pets; '"}
 	stdout, stderr, err := m.execCommand(ctx, selectRowsCMD)
 	if err != nil {
-		return 0, errors.Wrapf(err, "Error while counting the data of the database: %s", stderr)
+		return 0, fmt.Errorf("error while counting the data of the database: %s: %w", stderr, err)
 	}
 	// get the returned count and convert it to int, to return
 	rowsReturned, err := strconv.Atoi((strings.Split(stdout, "\n")[1]))
 	if err != nil {
-		return 0, errors.Wrapf(err, "Error while converting row count to int.")
+		return 0, fmt.Errorf("error while converting row count to int: %w", err)
 	}
 	log.Print("Count that we received from application is.", field.M{"app": m.name, "count": rowsReturned})
 	return rowsReturned, nil
@@ -186,7 +185,7 @@ func (m *MariaDB) Reset(ctx context.Context) error {
 	})
 
 	if err != nil {
-		return errors.Wrapf(err, "Error waiting for application %s to be ready to reset it", m.name)
+		return fmt.Errorf("error waiting for application %s to be ready to reset it: %w", m.name, err)
 	}
 
 	log.Print("Resetting the maria instance.", field.M{"app": m.name})
@@ -195,7 +194,7 @@ func (m *MariaDB) Reset(ctx context.Context) error {
 	deleteFromTableCMD := []string{"sh", "-c", "mysql -u root --password=$MARIADB_ROOT_PASSWORD -e 'DROP DATABASE IF EXISTS testdb'"}
 	_, stderr, err := m.execCommand(ctx, deleteFromTableCMD)
 	if err != nil {
-		return errors.Wrapf(err, "Error while dropping the maria table: %s", stderr)
+		return fmt.Errorf("error while dropping the maria table: %s: %w", stderr, err)
 	}
 
 	log.Print("Reset of the application was successful.", field.M{"app": m.name})
@@ -207,7 +206,7 @@ func (m *MariaDB) Initialize(ctx context.Context) error {
 	createTableCMD := []string{"sh", "-c", "mysql -u root --password=$MARIADB_ROOT_PASSWORD -e 'create database testdb; use testdb;  CREATE TABLE pets (name VARCHAR(20), owner VARCHAR(20), species VARCHAR(20), sex CHAR(1), birth DATE, death DATE);'"}
 	_, stderr, err := m.execCommand(ctx, createTableCMD)
 	if err != nil {
-		return errors.Wrapf(err, "Error while creating the maria table: %s", stderr)
+		return fmt.Errorf("error while creating the maria table: %s: %w", stderr, err)
 	}
 	return nil
 }
@@ -215,7 +214,7 @@ func (m *MariaDB) Initialize(ctx context.Context) error {
 func (m *MariaDB) execCommand(ctx context.Context, command []string) (string, string, error) {
 	podname, containername, err := kube.GetPodContainerFromStatefulSet(ctx, m.cli, m.namespace, mariaDBSTSName(m.chart.Release))
 	if err != nil || podname == "" {
-		return "", "", errors.Wrapf(err, "Error  getting pod and containername %s.", m.name)
+		return "", "", fmt.Errorf("error getting pod and containername %s: %w", m.name, err)
 	}
 	return kube.Exec(m.cli, m.namespace, podname, containername, command, nil)
 }
